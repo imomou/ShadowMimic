@@ -1,0 +1,144 @@
+package main
+
+import (
+	"encoding/csv"
+	"fmt"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudwatch"
+)
+
+var service *SkynetCollectorDomain
+
+func mainasd() {
+
+	// sess, err := session.NewSession(&aws.Config{Region: aws.String("ap-southeast-2")})
+	// if err != nil {
+	// 	log.Fatal(fmt.Sprintf("Bad request %s", err))
+	// }
+
+	// // Create CloudWatch client
+	// svc := cloudwatch.New(sess)
+	// repository := newSkynetCloudWatchRepository(svc)
+	// domain := newSkynetCollectorDomain(repository)
+
+	//results := domain.GetMetrics()
+
+	region := "ap-southeast-2"
+	cpuMetric := "CPUUtilization"
+
+	namespace := "AWS/EC2"
+	avgStats := "Average"
+	// sumStats := "Sum"
+	// maxStats := "Maximum"
+	// mimStats := "Minimum"
+
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region: &region,
+	}))
+
+	// Create CloudWatch client
+	svc := cloudwatch.New(sess)
+
+	result, err := svc.ListMetrics(&cloudwatch.ListMetricsInput{
+		MetricName: &cpuMetric,
+		Namespace:  &namespace})
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println(result)
+
+	file, ferr := os.Create("cpuutil.csv")
+	defer file.Close()se()
+
+	if ferr != nil {
+		fmt.Println(ferr)
+		return
+	}
+
+	writer := csv.NewWriter(file)
+	writer.Flush()
+	//writer.Write([]string{"Dimension", "StartTime", "EndTime", "Average", "Maximum"})
+	writer.Write([]string{"StartTime", "Average"})
+	//var myDimensions []metric
+
+	for _, element := range result.Metrics {
+
+		startTime := time.Now().AddDate(0, 0, -1)
+		endTime := time.Now()
+
+		//pointless for ec2 to get metrics for, average, sum, max, min, since they all single
+		resultMetrics, err := svc.GetMetricStatistics(&cloudwatch.GetMetricStatisticsInput{
+			MetricName: element.MetricName,
+			Namespace:  element.Namespace,
+			Dimensions: element.Dimensions,
+			//Statistics: []*string{&avgStats, &sumStats, &maxStats, &mimStats},
+			Statistics: []*string{&avgStats},
+			Period:     aws.Int64(60),
+			StartTime:  &startTime,
+			EndTime:    &endTime})
+
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+
+		for _, stuff := range resultMetrics.Datapoints {
+
+			bah := strconv.FormatFloat(*stuff.Average, 'f', 6, 64)
+
+			//resultMetric := metric{Dimension: element.Dimensions[0].Value, Average: stuff.Average}
+			//test := []string{*element.Dimensions[0].Value, bah}
+
+			//bah1 := *element.Dimensions[0].Value
+			bah3 := float64(startTime.Unix() / 1000000000000)
+			fmt.Println(bah3)
+			bah4 := strconv.FormatFloat(bah3, 'f', 6, 64)
+
+			//bah2 := startTime.Format(time.RFC3339)
+			//bah3 := endTime.Format(time.RFC3339)
+
+			test := []string{bah4, bah}
+
+			writer.Write(test)
+		}
+	}
+
+	fmt.Println("done!")
+}
+
+// func AddFileToS3(s *session.Session, fileDir string) error {
+
+// 	// Open the file for use
+// 	file, err := os.Open(fileDir)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer file.Close()
+
+// 	// Get file size and read the file content into a buffer
+// 	fileInfo, _ := file.Stat()
+// 	var size int64 = fileInfo.Size()
+// 	buffer := make([]byte, size)
+// 	file.Read(buffer)
+
+// 	// Config settings: this is where you choose the bucket, filename, content-type etc.
+// 	// of the file you're uploading.
+// 	_, err = s3.New(s).PutObject(&s3.PutObjectInput{
+// 		Bucket:			   aws.String(S3_BUCKET),
+// 		Key:				  aws.String(fileDir),
+// 		ACL:				  aws.String("private"),
+// 		Body:				 bytes.NewReader(buffer),
+// 		ContentLength:		aws.Int64(size),
+// 		ContentType:		  aws.String(http.DetectContentType(buffer)),
+// 		ContentDisposition:   aws.String("attachment"),
+// 		ServerSideEncryption: aws.String("AES256"),
+// 	})
+// 	return err
