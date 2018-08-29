@@ -14,9 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecs"
 )
 
-//var service *SkynetCollectorDomain
-
-// SkynetMetrics - temp model
 type SkynetMetrics struct {
 	ServiceName          string
 	ServiceArn           string
@@ -34,6 +31,8 @@ func main() {
 	eccNamespace := "AWS/ECS"
 	healthyHostMetricName := "HealthyHostCount"
 	cpuMetricName := "CPUUtilization"
+	// tDimension := "TargetGroup"
+	// lDimension := "LoadBalancer"
 	avgStats := "Average"
 
 	startTime := time.Now().AddDate(0, 0, -1)
@@ -166,6 +165,10 @@ func main() {
 			StartTime:  &startTime,
 			EndTime:    &endTime})
 
+		// if len(hsMetrics.Datapoints) == 0 {
+		// 	fmt.Println(a.Dimension)
+		// }
+
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -202,8 +205,10 @@ func main() {
 
 	writer := csv.NewWriter(file)
 	writer.Flush()
+	//writer.Write([]string{"StartTime", "ServiceName", "AllocatedCPU", "HealthyHosts", "CPUAverage", "Aggregate"})
 	writer.Write([]string{"StartTime", "ServiceName", "AllocatedCPU", "HealthyHosts", "CPUAverage"})
 
+	var l int64
 	for _, stuff := range sMetrics {
 
 		asd := len(stuff.CPUUtilisationData)
@@ -211,6 +216,7 @@ func main() {
 
 		j := asd
 		i := 0
+		l++
 
 		if asd < bfg {
 			j = bfg
@@ -225,7 +231,7 @@ func main() {
 			}
 
 			//cpu = map[bool]float64{false: 0, true: *stuff.CPUUtilisationData[i].Average}[i < asd]
-			cpuString := strconv.FormatFloat(cpu, 'f', 2, 64)
+			cpuString := strconv.FormatFloat(cpu, 'f', 10, 64)
 			var bah3 int64
 
 			if i < len(stuff.CPUUtilisationData) || stuff.CPUUtilisationData == nil {
@@ -245,7 +251,12 @@ func main() {
 			allocatedCPU := stuff.TaskDeinition.ContainerDefinitions[0].Cpu
 			allocatedCPUStr := strconv.FormatInt(*allocatedCPU, 10)
 			healthyHostsString := strconv.FormatFloat(healthyHosts, 'f', 0, 64)
-			test := []string{timestamp, stuff.ServiceName, allocatedCPUStr, healthyHostsString, cpuString}
+			lstr := strconv.FormatInt(l, 10)
+
+			serviceName := "ServiceName" + lstr
+			// aggregateF := cpu * healthyHosts * float64(*allocatedCPU)
+			// aggregate := strconv.FormatFloat(aggregateF, 'f', 4, 64)
+			test := []string{timestamp, serviceName, allocatedCPUStr, healthyHostsString, cpuString}
 
 			asd := writer.Write(test)
 
