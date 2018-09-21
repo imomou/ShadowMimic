@@ -25,6 +25,11 @@ type SkynetMetrics struct {
 	RequestCount         []*cloudwatch.Datapoint
 }
 
+type ServiceDetail struct {
+	ServiceName     string
+	TempServiceName string
+}
+
 func main() {
 
 	clusters := [...]string{"Prod-EcsBase-EcsCluster-1KWT57G8ND2EQ", "Prod-EcsDevCluster-EcsCluster-LI8U7BH3FTY2", "Prod-EcsProductionCluster-EcsCluster-11106GYRQEVQV", "Prod-EcsStagingCluster-EcsCluster-1AAGQRFIOE9AE", "Prod-WindowsDev-EcsCluster-1AIC5GZHFCJTI", "Prod-WindowsProduction-EcsCluster-N1TE86U9CWS2"}
@@ -241,6 +246,8 @@ func uglyFunction(cluster *string, day *int) {
 	defer writer.Flush()
 	writer.Write([]string{"TimeStampEpoch", "CusterName", "ServiceName", "AllocatedCPU", "HealthyHosts", "CPUAverage", "RequestCount"})
 
+	servicesNames := make([]ServiceDetail, 0)
+
 	var l int64
 	for _, stuff := range sMetrics {
 
@@ -256,7 +263,20 @@ func uglyFunction(cluster *string, day *int) {
 		}
 
 		xid := xid.New()
-		serviceName := "Service" + xid.String()
+		serviceName := "Service_" + xid.String()
+
+		a := 0
+		for a < len(servicesNames) {
+
+			if servicesNames[a].ServiceName == stuff.ServiceName {
+				serviceName = servicesNames[a].TempServiceName
+				break
+			}
+
+			if a == len(servicesNames)-1 {
+				servicesNames = append(servicesNames, ServiceDetail{ServiceName: stuff.ServiceName, TempServiceName: serviceName})
+			}
+		}
 
 		k := 0
 		for i < j-1 {
@@ -300,4 +320,5 @@ func uglyFunction(cluster *string, day *int) {
 			k++
 		}
 	}
+
 }
