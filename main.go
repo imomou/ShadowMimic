@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/ecs"
+	"github.com/rs/xid"
 )
 
 type SkynetMetrics struct {
@@ -21,22 +22,41 @@ type SkynetMetrics struct {
 	Dimension            []*cloudwatch.Dimension
 	HealthyInstancesData []*cloudwatch.Datapoint
 	CPUUtilisationData   []*cloudwatch.Datapoint
+	RequestCount         []*cloudwatch.Datapoint
 }
 
 func main() {
 
+	clusters := [...]string{"Prod-EcsBase-EcsCluster-1KWT57G8ND2EQ", "Prod-EcsDevCluster-EcsCluster-LI8U7BH3FTY2", "Prod-EcsProductionCluster-EcsCluster-11106GYRQEVQV", "Prod-EcsStagingCluster-EcsCluster-1AAGQRFIOE9AE", "Prod-WindowsDev-EcsCluster-1AIC5GZHFCJTI", "Prod-WindowsProduction-EcsCluster-N1TE86U9CWS2"}
+
+	i := 1
+
+	for i <= 14 {
+
+		for _, cluster := range clusters {
+			uglyFunction(&cluster, &i)
+		}
+
+		i++
+	}
+
+	fmt.Println("done!")
+}
+
+func uglyFunction(cluster *string, day *int) {
+
 	region := "ap-southeast-2"
-	cluster := "Prod-EcsProductionCluster-EcsCluster-11106GYRQEVQV"
 	elbNamespace := "AWS/ApplicationELB"
 	eccNamespace := "AWS/ECS"
 	healthyHostMetricName := "HealthyHostCount"
 	cpuMetricName := "CPUUtilization"
-	// tDimension := "TargetGroup"
+	rcMetricName := "RequestCount"
 	// lDimension := "LoadBalancer"
 	avgStats := "Average"
+	sumStats := "Sum"
 
-	startTime := time.Now().AddDate(0, 0, -1)
-	endTime := time.Now()
+	startTime := time.Now().AddDate(0, 0, (*day*-1)-1)
+	endTime := time.Now().AddDate(0, 0, (*day * -1))
 
 	sess := session.Must(session.NewSession(&aws.Config{
 		Region: &region,
@@ -52,7 +72,7 @@ func main() {
 	for i < 10000 {
 
 		req, error := svc.ListServices(&ecs.ListServicesInput{
-			Cluster:   &cluster,
+			Cluster:   cluster,
 			NextToken: &token})
 
 		if error != nil {
@@ -102,7 +122,7 @@ func main() {
 
 		bah, err := svc.DescribeServices(&ecs.DescribeServicesInput{
 			Services: []*string{&v},
-			Cluster:  &cluster})
+			Cluster:  cluster})
 
 		if err != nil {
 			fmt.Println(err)
@@ -165,9 +185,20 @@ func main() {
 			StartTime:  &startTime,
 			EndTime:    &endTime})
 
-		// if len(hsMetrics.Datapoints) == 0 {
-		// 	fmt.Println(a.Dimension)
-		// }
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		//fmt.Println(dimensions)
+
+		rcMetrics, err := cwl.GetMetricStatistics(&cloudwatch.GetMetricStatisticsInput{
+			MetricName: &rcMetricName,
+			Namespace:  &elbNamespace,
+			Dimensions: dimensions,
+			Statistics: []*string{&sumStats},
+			Period:     aws.Int64(60),
+			StartTime:  &startTime,
+			EndTime:    &endTime})
 
 		if err != nil {
 			fmt.Println(err)
@@ -181,7 +212,7 @@ func main() {
 				Value: &a.ServiceName},
 				&cloudwatch.Dimension{
 					Name:  aws.String("ClusterName"),
-					Value: &cluster}},
+					Value: cluster}},
 			Statistics: []*string{&avgStats},
 			Period:     aws.Int64(60),
 			StartTime:  &startTime,
@@ -193,9 +224,12 @@ func main() {
 
 		a.HealthyInstancesData = hsMetrics.Datapoints
 		a.CPUUtilisationData = cpuMetrics.Datapoints
+		a.RequestCount = rcMetrics.Datapoints
 	}
 
-	file, ferr := os.Create("details.csv")
+	fileName := *cluster + "-" + startTime.Format("20060102") + ".csv"
+
+	file, ferr := os.Create(fileName)
 	defer file.Close()
 
 	if ferr != nil {
@@ -204,9 +238,8 @@ func main() {
 	}
 
 	writer := csv.NewWriter(file)
-	writer.Flush()
-	//writer.Write([]string{"StartTime", "ServiceName", "AllocatedCPU", "HealthyHosts", "CPUAverage", "Aggregate"})
-	writer.Write([]string{"StartTime", "ServiceName", "AllocatedCPU", "HealthyHosts", "CPUAverage"})
+	defer writer.Flush()
+	writer.Write([]string{"TimeStampEpoch", "CusterName", "ServiceName", "AllocatedCPU", "HealthyHosts", "CPUAverage", "RequestCount"})
 
 	var l int64
 	for _, stuff := range sMetrics {
@@ -222,41 +255,40 @@ func main() {
 			j = bfg
 		}
 
+		xid := xid.New()
+		serviceName := "Service" + xid.String()
+
 		k := 0
-		for i < j {
+		for i < j-1 {
 
 			var cpu float64
 			if i < asd {
 				cpu = *stuff.CPUUtilisationData[i].Average
 			}
 
-			//cpu = map[bool]float64{false: 0, true: *stuff.CPUUtilisationData[i].Average}[i < asd]
 			cpuString := strconv.FormatFloat(cpu, 'f', 10, 64)
 			var bah3 int64
 
-			if i < len(stuff.CPUUtilisationData) || stuff.CPUUtilisationData == nil {
+			if i < len(stuff.CPUUtilisationData) && stuff.CPUUtilisationData != nil {
 				bah3 = stuff.CPUUtilisationData[i].Timestamp.Unix()
-			} else if stuff.HealthyInstancesData[i] != nil {
-				bah3 = stuff.HealthyInstancesData[i].Timestamp.Unix()
 			}
 
-			timestamp := strconv.FormatInt(bah3, 10)
-
+			timestampEpoch := strconv.FormatInt(bah3, 10)
 			var healthyHosts float64
-			//healthyHosts := map[bool]float64{false: 0, true: *stuff.HealthyInstancesData[i].Average}[i < bfg]
 			if i < bfg {
 				healthyHosts = *stuff.HealthyInstancesData[i].Average
 			}
 
+			var requestCount float64
+			if i < len(stuff.RequestCount) {
+				requestCount = *stuff.RequestCount[i].Sum
+			}
+
+			healthyHostsString := strconv.FormatFloat(healthyHosts, 'f', 0, 64)
 			allocatedCPU := stuff.TaskDeinition.ContainerDefinitions[0].Cpu
 			allocatedCPUStr := strconv.FormatInt(*allocatedCPU, 10)
-			healthyHostsString := strconv.FormatFloat(healthyHosts, 'f', 0, 64)
-			lstr := strconv.FormatInt(l, 10)
-
-			serviceName := "ServiceName" + lstr
-			// aggregateF := cpu * healthyHosts * float64(*allocatedCPU)
-			// aggregate := strconv.FormatFloat(aggregateF, 'f', 4, 64)
-			test := []string{timestamp, serviceName, allocatedCPUStr, healthyHostsString, cpuString}
+			requestCountStr := strconv.FormatFloat(requestCount, 'f', 0, 64)
+			test := []string{timestampEpoch, *cluster, serviceName, allocatedCPUStr, healthyHostsString, cpuString, requestCountStr}
 
 			asd := writer.Write(test)
 
@@ -268,5 +300,4 @@ func main() {
 			k++
 		}
 	}
-	fmt.Println("done!")
 }
