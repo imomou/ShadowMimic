@@ -266,16 +266,19 @@ func uglyFunction(cluster *string, day *int) {
 		serviceName := "Service_" + xid.String()
 
 		a := 0
-		for a < len(servicesNames) {
+		for a <= len(servicesNames) {
 
-			if servicesNames[a].ServiceName == stuff.ServiceName {
+			if a != 0 && servicesNames[a].ServiceName == stuff.ServiceName {
 				serviceName = servicesNames[a].TempServiceName
 				break
 			}
 
-			if a == len(servicesNames)-1 {
+			if a == len(servicesNames) {
+				fmt.Println("asd")
 				servicesNames = append(servicesNames, ServiceDetail{ServiceName: stuff.ServiceName, TempServiceName: serviceName})
 			}
+
+			a++
 		}
 
 		k := 0
